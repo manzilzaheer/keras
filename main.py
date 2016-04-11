@@ -14,7 +14,7 @@ from utils import *
 print "Hi"
 
 # Load data
-progs, labels, num_progs = load_char_data('task')
+progs, labels, num_progs = load_char_data('task2')
 
 # Create list of distinct tokens
 vocab = sorted(set([token for prog in progs for token in prog]))
@@ -49,14 +49,29 @@ print "y: %d" % y_example
 # Neural network description
 model = Sequential()
 model.add(Embedding(output_dim=64, input_dim=vocab_size, mask_zero=True))
-model.add(DeepSet(hidden_dim=10,filter_size=10))
-#model.add(LSTM2(output_dim=26))
+model.add(DeepSet(hidden_dim=32,filter_size=26))
+#model.add(LSTM2(output_dim=8, hidden_dim=32))
 model.add(SimpleRNN(output_dim=1, activation='sigmoid'))
 RMS = RMSprop(lr=0.005)
-model.compile(optimizer=RMS, loss='binary_crossentropy')
+model.compile(optimizer=RMS, loss='seq_binary_crossentropy')
 
+# training
+model.fit(train_X, train_y, nb_epoch=20, batch_size=100, validation_split=0.1, show_accuracy=True, verbose=1)
 
-model.fit(train_X, train_y, nb_epoch=20, batch_size=100, show_accuracy=True)
+# testing
+progs, labels, num_progs = load_char_data('test2')
+my_maxlen = len(max(progs,key=len))
+idx_progs = [[token_to_index[token] for token in prog] for prog in progs]
+test_X = pad_sequences(idx_progs, maxlen=my_maxlen)
+# train_X = np.zeros((num_progs, my_maxlen, vocab_size), dtype='int8')
+# for i, prog in enumerate(idx_progs):
+#     for j, token in enumerate(prog):
+#         train_X[i,j,token] = 1
+test_y = np.array(labels, dtype=bool, ndmin=2).transpose()
+
+pred_y = model.predict_classes(test_X)
+print 1.0*sum(pred_y==test_y)/len(test_y)
+
 
 print len(model.layers)
 

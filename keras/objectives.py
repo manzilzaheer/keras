@@ -39,6 +39,9 @@ def categorical_crossentropy(y_true, y_pred):
 def binary_crossentropy(y_true, y_pred):
     return K.mean(K.binary_crossentropy(y_pred, y_true), axis=-1)
 
+def seq_binary_crossentropy(y_true, y_pred):
+    return K.mean(K.binary_crossentropy(y_pred, y_true), axis=None)
+
 
 def poisson(y_true, y_pred):
     return K.mean(y_pred - y_true * K.log(y_pred + K.epsilon()), axis=-1)

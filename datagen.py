@@ -3,17 +3,18 @@ import string
 import random
 
 def check(sequence):
-    y = True
+    y = []
     flag = True
     set = {}
     for c in sequence:
         if flag:
+            y.append('1')
             if c == '!':
                 flag = False
             else:
                 set[c]=True
         else:
-            y = y and set.has_key(c)
+            y.append(str(int(set.has_key(c))))
 
     return y
 
@@ -27,13 +28,19 @@ def main():
         a = np.random.random_integers(20,30)
         b = np.random.random_integers(5, 10)
         seen = np.random.choice(alphabet, size=a)
-        if np.random.uniform() > 0.5:
+        u = np.random.uniform()
+        if  u < 0.3:
             query = np.random.choice(seen, size=b)
+        elif u < 0.6:
+            query = np.random.choice(alphabet,size=b)
         else:
-            query = np.random.choice(alphabet, size=b)
+            query = np.random.choice(seen, size=b)
+            pos = np.random.randint(0,b,1)
+            query[pos] = np.random.choice(np.setdiff1d(alphabet,seen), size=1)
         task = np.hstack([seen, '!', query])
         fx.write(''.join(task) + '\n')
-        fy.write(str(int(check(task)))+'\n')
+        fy.write(''.join(check(task)) + '\n')
+        #fy.write(str(int(check(task)))+'\n')
 
     fx.close()
     fy.close()
