@@ -222,13 +222,13 @@ class LSTM2(Recurrent):
         dropout_U: float between 0 and 1. Fraction of the input units to drop for recurrent connections.
 
     '''
-    def __init__(self, output_dim,
+    def __init__(self, output_dim, hidden_dim,
                  init='glorot_uniform', inner_init='orthogonal',
-                 forget_bias_init='one', activation='tanh',
-                 inner_activation='hard_sigmoid',
+                 forget_bias_init='one', activation='tanh', inner_activation='sigmoid',
                  W_regularizer=None, U_regularizer=None, b_regularizer=None,
                  dropout_W=0., dropout_U=0., **kwargs):
         self.output_dim = output_dim
+        self.hidden_dim = hidden_dim
         self.init = initializations.get(init)
         self.inner_init = initializations.get(inner_init)
         self.forget_bias_init = initializations.get(forget_bias_init)
@@ -253,55 +253,42 @@ class LSTM2(Recurrent):
             # initial states: 2 all-zero tensors of shape (output_dim)
             self.states = [None, None]
 
-        self.W_i = self.init((input_dim, self.output_dim),
-                             name='{}_W_i'.format(self.name))
-        self.U_i = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_i'.format(self.name))
-        self.b_i = K.zeros((self.output_dim,), name='{}_b_i'.format(self.name))
+        self.W_i = self.init((input_dim, self.hidden_dim), name='{}_W_i'.format(self.name))
+        self.U_i = self.inner_init((self.hidden_dim, self.hidden_dim), name='{}_U_i'.format(self.name))
+        self.b_i = K.zeros((self.hidden_dim,), name='{}_b_i'.format(self.name))
 
-        self.W_f = self.init((input_dim, self.output_dim),
-                             name='{}_W_f'.format(self.name))
-        self.U_f = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_f'.format(self.name))
-        self.b_f = self.forget_bias_init((self.output_dim,),
-                                         name='{}_b_f'.format(self.name))
+        self.W_f = self.init((input_dim, self.hidden_dim), name='{}_W_f'.format(self.name))
+        self.U_f = self.inner_init((self.hidden_dim, self.hidden_dim), name='{}_U_f'.format(self.name))
+        self.b_f = self.forget_bias_init((self.hidden_dim,), name='{}_b_f'.format(self.name))
 
-        self.W_c = self.init((input_dim, self.output_dim),
-                             name='{}_W_c'.format(self.name))
-        self.U_c = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_c'.format(self.name))
-        self.b_c = K.zeros((self.output_dim,), name='{}_b_c'.format(self.name))
+        self.W_c = self.init((input_dim, self.hidden_dim), name='{}_W_c'.format(self.name))
+        self.U_c = self.inner_init((self.hidden_dim, self.hidden_dim), name='{}_U_c'.format(self.name))
+        self.b_c = K.zeros((self.hidden_dim,), name='{}_b_c'.format(self.name))
 
-        self.W_o = self.init((input_dim, self.output_dim),
-                             name='{}_W_o'.format(self.name))
-        self.U_o = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_o'.format(self.name))
-        self.b_o = K.zeros((self.output_dim,), name='{}_b_o'.format(self.name))
+        self.W_o = self.init((input_dim, self.hidden_dim), name='{}_W_o'.format(self.name))
+        self.U_o = self.inner_init((self.hidden_dim, self.hidden_dim), name='{}_U_o'.format(self.name))
+        self.b_o = K.zeros((self.hidden_dim,), name='{}_b_o'.format(self.name))
+
+        self.W_y = self.init((input_dim, self.output_dim), name='{}_W_y'.format(self.name))
+        self.U_y = self.inner_init((self.hidden_dim, self.output_dim), name='{}_U_y'.format(self.name))
+        self.b_y = K.zeros((self.output_dim,), name='{}_b_y'.format(self.name))
 
         self.regularizers = []
         if self.W_regularizer:
-            self.W_regularizer.set_param(K.concatenate([self.W_i,
-                                                        self.W_f,
-                                                        self.W_c,
-                                                        self.W_o]))
+            self.W_regularizer.set_param(K.concatenate([self.W_i, self.W_f, self.W_c, self.W_o, self.W_y]))
             self.regularizers.append(self.W_regularizer)
         if self.U_regularizer:
-            self.U_regularizer.set_param(K.concatenate([self.U_i,
-                                                        self.U_f,
-                                                        self.U_c,
-                                                        self.U_o]))
+            self.U_regularizer.set_param(K.concatenate([self.U_i, self.U_f, self.U_c, self.U_o, self.U_y]))
             self.regularizers.append(self.U_regularizer)
         if self.b_regularizer:
-            self.b_regularizer.set_param(K.concatenate([self.b_i,
-                                                        self.b_f,
-                                                        self.b_c,
-                                                        self.b_o]))
+            self.b_regularizer.set_param(K.concatenate([self.b_i, self.b_f, self.b_c, self.b_o, self.b_y]))
             self.regularizers.append(self.b_regularizer)
 
         self.trainable_weights = [self.W_i, self.U_i, self.b_i,
                                   self.W_c, self.U_c, self.b_c,
                                   self.W_f, self.U_f, self.b_f,
-                                  self.W_o, self.U_o, self.b_o]
+                                  self.W_o, self.U_o, self.b_o,
+                                  self.W_y, self.U_y, self.b_y]
 
         if self.initial_weights is not None:
             self.set_weights(self.initial_weights)
@@ -316,12 +303,21 @@ class LSTM2(Recurrent):
                             'input_shape must be provided (including batch size).')
         if hasattr(self, 'states'):
             K.set_value(self.states[0],
-                        np.zeros((input_shape[0], self.output_dim)))
+                        np.zeros((input_shape[0], self.hidden_dim)))
             K.set_value(self.states[1],
-                        np.zeros((input_shape[0], self.output_dim)))
+                        np.zeros((input_shape[0], self.hidden_dim)))
         else:
-            self.states = [K.zeros((input_shape[0], self.output_dim)),
-                           K.zeros((input_shape[0], self.output_dim))]
+            self.states = [K.zeros((input_shape[0], self.hidden_dim)),
+                           K.zeros((input_shape[0], self.hidden_dim))]
+
+    def get_initial_states(self, x):
+        # build an all-zero tensor of shape (samples, output_dim)
+        initial_state = K.zeros_like(x)  # (samples, timesteps, input_dim)
+        initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
+        reducer = K.zeros((self.input_dim, self.hidden_dim))
+        initial_state = K.dot(initial_state, reducer)  # (samples, hidden_dim)
+        initial_states = [initial_state for _ in range(len(self.states))]
+        return initial_states
 
 
     def preprocess_input(self, x, train=False):
@@ -333,15 +329,12 @@ class LSTM2(Recurrent):
         input_dim = input_shape[2]
         timesteps = input_shape[1]
 
-        x_i = time_distributed_dense(x, self.W_i, self.b_i, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_f = time_distributed_dense(x, self.W_f, self.b_f, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_c = time_distributed_dense(x, self.W_c, self.b_c, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_o = time_distributed_dense(x, self.W_o, self.b_o, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        return K.concatenate([x_i, x_f, x_c, x_o], axis=2)
+        x_i = time_distributed_dense(x, self.W_i, self.b_i, dropout, input_dim, self.hidden_dim, timesteps)
+        x_f = time_distributed_dense(x, self.W_f, self.b_f, dropout, input_dim, self.hidden_dim, timesteps)
+        x_c = time_distributed_dense(x, self.W_c, self.b_c, dropout, input_dim, self.hidden_dim, timesteps)
+        x_o = time_distributed_dense(x, self.W_o, self.b_o, dropout, input_dim, self.hidden_dim, timesteps)
+        x_y = time_distributed_dense(x, self.W_y, self.b_y, dropout, input_dim, self.hidden_dim, timesteps)
+        return K.concatenate([x_i, x_f, x_c, x_o, x_y], axis=2)
 
 
     def step(self, x, states):
@@ -350,12 +343,13 @@ class LSTM2(Recurrent):
         if len(states) == 3:
             B_U = states[2]
         else:
-            B_U = [1. for _ in range(4)]
+            B_U = [1. for _ in range(5)]
 
-        x_i = x[:, :self.output_dim]
-        x_f = x[:, self.output_dim: 2 * self.output_dim]
-        x_c = x[:, 2 * self.output_dim: 3 * self.output_dim]
-        x_o = x[:, 3 * self.output_dim:]
+        x_i = x[:, :self.hidden_dim]
+        x_f = x[:, self.hidden_dim: 2 * self.hidden_dim]
+        x_c = x[:, 2 * self.hidden_dim: 3 * self.hidden_dim]
+        x_o = x[:, 3 * self.hidden_dim: 4 * self.hidden_dim]
+        x_y = x[:, 4 * self.hidden_dim:]
 
         i = self.inner_activation(x_i + K.dot(h_tm1 * B_U[0], self.U_i))
         f = self.inner_activation(x_f + K.dot(h_tm1 * B_U[1], self.U_f))
@@ -363,6 +357,7 @@ class LSTM2(Recurrent):
         o = self.inner_activation(x_o + K.dot(h_tm1 * B_U[3], self.U_o))
 
         h = o * self.activation(c)
+        y = self.inner_activation(x_y + K.dot(h * B_U[4], self.U_y))
         return h, [h, c]
 
 
@@ -370,7 +365,7 @@ class LSTM2(Recurrent):
         if train and (0 < self.dropout_U < 1):
             ones = K.ones_like(K.reshape(x[:, 0, 0], (-1, 1)))
             ones = K.concatenate([ones] * self.output_dim, 1)
-            B_U = [K.dropout(ones, self.dropout_U) for _ in range(4)]
+            B_U = [K.dropout(ones, self.dropout_U) for _ in range(5)]
             return [B_U]
         return []
 
