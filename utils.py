@@ -35,11 +35,15 @@ def load_char_data(dataset):
         progs = f.readlines()
         # Split program into tokens
         progs = [ list(prog) for prog in progs]
-        progs = [prog[:-2] for prog in progs]
+        progs = [prog[:-1] for prog in progs]
 
     # Read the labels for correctness of the program
     with open(dataset + '_labels.txt', 'rb') as f:
-        labels = [bool(int(l)) for l in f]
+        labels = f.readlines()
+        labels = [list(label) for label in labels]
+        labels = [label[:-1] for label in labels]
+        labels = [[int(c) if int(c)!=2 else 0.5 for c in label] for label in labels]
+
 
     num_progs = len(progs)
     # Make sure number of programs and labels match

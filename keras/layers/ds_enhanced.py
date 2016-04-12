@@ -165,8 +165,8 @@ class DeepSet(Recurrent):
         va = K.softmax( x_va ) #+ K.dot(h * B_U[3], self.U_va)) )
         vr = K.softmax( x_vr ) # + K.dot(h * B_U[4], self.U_vr)) )
 
-        f = K.relu(f_tm1 + K.repeat_elements(a,rep=self.filter_size,axis=1)*va, max_value=1)
-        y = (1-q) + q* K.relu( K.sum(vr*f_tm1), max_value=1 )
+        f = self.activation(f_tm1 + K.repeat_elements(a,rep=self.filter_size,axis=1)*va)#, max_value=1)
+        y = (1-q) + q* self.activation( K.sum(vr*f_tm1))#, max_value=1 )
 
         return y, [h, f]
 
@@ -223,7 +223,7 @@ class LSTM2(Recurrent):
     '''
     def __init__(self, output_dim, hidden_dim,
                  init='glorot_uniform', inner_init='orthogonal',
-                 forget_bias_init='one', activation='tanh', inner_activation='sigmoid',
+                 forget_bias_init='one', activation='tanh', inner_activation='hard_sigmoid',
                  W_regularizer=None, U_regularizer=None, b_regularizer=None,
                  dropout_W=0., dropout_U=0., **kwargs):
         self.output_dim = output_dim
@@ -356,7 +356,7 @@ class LSTM2(Recurrent):
         o = self.inner_activation(x_o + K.dot(h_tm1 * B_U[3], self.U_o))
 
         h = o * self.activation(c)
-        y = self.activation(x_y + K.dot(h * B_U[4], self.U_y))
+        y = self.inner_activation(x_y + K.dot(h * B_U[4], self.U_y))
         return y, [h, c]
 
 

@@ -519,6 +519,9 @@ class Sequential(Model, containers.Sequential):
             mask = self.layers[-1].get_output_mask()
         else:
             mask = None
+
+        #from theano import tensor as T
+        #mask = T.switch(T.neq(self.y.sum(axis=2),0.5), 1, 0 )
         train_loss = weighted_loss(self.y, self.y_train, self.weights, mask)
         test_loss = weighted_loss(self.y, self.y_test, self.weights, mask)
 
@@ -540,8 +543,10 @@ class Sequential(Model, containers.Sequential):
                               ' (1-dimensional features), but you are using ' +
                               ' the `categorical_crossentropy` loss. You ' +
                               'almost certainly want to use `binary_crossentropy` instead.')
-            train_accuracy = K.mean(K.equal(self.y, K.round(self.y_train)))
-            test_accuracy = K.mean(K.equal(self.y, K.round(self.y_test)))
+            train_answer = K.equal(self.y, K.round(self.y_train))
+            test_answer = K.equal(self.y, K.round(self.y_test))
+            train_accuracy = K.mean(train_answer[K.not_equal(self.y, 0.5)], axis=None)
+            test_accuracy = K.mean(test_answer[K.not_equal(self.y, 0.5)], axis=None)
 
         for r in self.regularizers:
             train_loss = r(train_loss)

@@ -40,7 +40,13 @@ def binary_crossentropy(y_true, y_pred):
     return K.mean(K.binary_crossentropy(y_pred, y_true), axis=-1)
 
 def seq_binary_crossentropy(y_true, y_pred):
-    return K.mean(K.binary_crossentropy(y_pred, y_true), axis=None)
+    #y_true = K.switch(K.equal(y_true, 0.5), 0, y_true)
+    #y_pred = K.switch(K.equal(y_true, 0.5), 0, y_pred)
+    #return K.mean(K.binary_crossentropy(y_pred, y_true), axis=None)
+    answer = K.binary_crossentropy(y_pred, y_true)
+    answer = answer[K.not_equal(y_true, 0.5)]
+    return K.mean(answer, axis=None) #answer.sum()/K.not_equal(y_true, 0.5).sum()
+
 
 
 def poisson(y_true, y_pred):

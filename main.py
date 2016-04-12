@@ -14,7 +14,7 @@ from utils import *
 print "Hi"
 
 # Load data
-progs, labels, num_progs = load_char_data('task2')
+progs, labels, num_progs = load_char_data('task')
 
 # Create list of distinct tokens
 vocab = sorted(set([token for prog in progs for token in prog]))
@@ -33,7 +33,9 @@ train_X = pad_sequences(idx_progs, maxlen=my_maxlen)
 # for i, prog in enumerate(idx_progs):
 #     for j, token in enumerate(prog):
 #         train_X[i,j,token] = 1
-train_y = np.array(labels, dtype=bool, ndmin=2).transpose()
+#train_y = np.array(labels, dtype=bool, ndmin=2).transpose()
+train_y = pad_sequences(labels, maxlen=my_maxlen, dtype=float, value=0.5)
+train_y = np.expand_dims(train_y,axis=2)
 
 print "Example:"
 x_example, y_example = train_X[29], train_y[29]
@@ -43,23 +45,22 @@ print progs[29]
 # for token in x_example:
 #     if token:
 #         print vocab[token],
-print "y: %d" % y_example
+print "y:"
+print train_y[29]
+print train_y.shape
 
 
 # Neural network description
 model = Sequential()
 model.add(Embedding(output_dim=64, input_dim=vocab_size, mask_zero=True))
-model.add(DeepSet(hidden_dim=32,filter_size=26))
-#model.add(LSTM2(output_dim=8, hidden_dim=32))
-model.add(SimpleRNN(output_dim=1, activation='sigmoid'))
-RMS = RMSprop(lr=0.005)
+#model.add(DeepSet(hidden_dim=32,filter_size=26))
+model.add(LSTM2(output_dim=1, hidden_dim=32))
+#model.add(SimpleRNN(output_dim=1, activation='sigmoid',return_sequences=True))
+RMS = RMSprop(lr=0.05)
 model.compile(optimizer=RMS, loss='seq_binary_crossentropy')
 
-# training
-model.fit(train_X, train_y, nb_epoch=20, batch_size=100, validation_split=0.1, show_accuracy=True, verbose=1)
-
 # testing
-progs, labels, num_progs = load_char_data('test2')
+progs, labels, num_progs = load_char_data('test')
 my_maxlen = len(max(progs,key=len))
 idx_progs = [[token_to_index[token] for token in prog] for prog in progs]
 test_X = pad_sequences(idx_progs, maxlen=my_maxlen)
@@ -67,10 +68,18 @@ test_X = pad_sequences(idx_progs, maxlen=my_maxlen)
 # for i, prog in enumerate(idx_progs):
 #     for j, token in enumerate(prog):
 #         train_X[i,j,token] = 1
-test_y = np.array(labels, dtype=bool, ndmin=2).transpose()
+#test_y = np.array(labels, dtype=bool, ndmin=2).transpose()
+test_y = pad_sequences(labels, maxlen=my_maxlen)
 
-pred_y = model.predict_classes(test_X)
-print 1.0*sum(pred_y==test_y)/len(test_y)
+np.set_printoptions(precision=2)
+for i in range(20):
+    model.fit(train_X, train_y, nb_epoch=1, batch_size=100, validation_split=0.1, show_accuracy=True)
+    pred_y = np.squeeze(model.predict(test_X))
+    print 1.0 * sum(np.round(pred_y) == test_y) / len(test_y)
+    for j in range(10):
+        print progs[j]
+        print pred_y[j]
+        print test_y[j]
 
 
 print len(model.layers)

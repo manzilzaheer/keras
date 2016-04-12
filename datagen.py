@@ -8,7 +8,7 @@ def check(sequence):
     set = {}
     for c in sequence:
         if flag:
-            y.append('1')
+            y.append('2')
             if c == '!':
                 flag = False
             else:
