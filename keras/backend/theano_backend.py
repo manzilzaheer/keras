@@ -63,6 +63,10 @@ def ones(shape, dtype=_FLOATX, name=None):
     '''
     return variable(np.ones(shape), dtype, name)
 
+def eye(N, M=None, k=0, dtype=_FLOATX, name=None):
+    '''Instantiate an identity variable.
+    '''
+    return variable(np.eye(N, M, k), dtype, name)
 
 def ones_like(x):
     return T.ones_like(x)

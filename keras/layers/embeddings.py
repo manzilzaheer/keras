@@ -123,3 +123,71 @@ class Embedding(Layer):
                   "dropout": self.dropout}
         base_config = super(Embedding, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+class OneHotEmbedding(Layer):
+    '''Turn positive integers (indexes) into one hot encoding.
+    eg. [[4], [2]] -> [[0, 0, 0, 0, 1, 0], [0, 0, 1, 0, 0, 0]]
+
+    This layer can only be used as the first layer in a model.
+
+    # Input shape
+        2D tensor with shape: `(nb_samples, sequence_length)`.
+
+    # Output shape
+        3D tensor with shape: `(nb_samples, sequence_length, output_dim)`.
+
+    # Arguments
+      input_dim: int >= 0. Size of the vocabulary, ie.
+          1 + maximum integer index occurring in the input data.
+      output_dim: int >= input_dim. Dimension of the embedding.
+      mask_zero: Whether or not the input value 0 is a special "padding"
+          value that should be masked out.
+          This is useful for [recurrent layers](recurrent.md) which may take
+          variable length input. If this is `True` then all subsequent layers
+          in the model need to support masking or an exception will be raised.
+      input_length: Length of input sequences, when it is constant.
+          This argument is required if you are going to connect
+          `Flatten` then `Dense` layers upstream
+          (without it, the shape of the dense outputs cannot be computed).
+    '''
+    input_ndim = 2
+
+    def __init__(self, input_dim, output_dim,
+                 input_length=None, mask_zero=False, **kwargs):
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+        self.input_length = input_length
+        self.mask_zero = mask_zero
+
+        kwargs['input_shape'] = (self.input_dim,)
+        super(OneHotEmbedding, self).__init__(**kwargs)
+
+    def build(self):
+        self.input = K.placeholder(shape=(self.input_shape[0], self.input_length), dtype='int32')
+
+    def get_output_mask(self, train=None):
+        X = self.get_input(train)
+        if not self.mask_zero:
+            return None
+        else:
+            return K.not_equal(X, 0)
+
+    @property
+    def output_shape(self):
+        return (self.input_shape[0], self.input_length, self.output_dim)
+
+    def get_output(self, train=False):
+        X = self.get_input(train)
+        B = K.eye(self.input_dim)
+        out = K.gather(B, X)
+        return out
+
+    def get_config(self):
+        config = {"name": self.__class__.__name__,
+                  "input_dim": self.input_dim,
+                  "output_dim": self.output_dim,
+                  "input_length": self.input_length,
+                  "mask_zero": self.mask_zero}
+        base_config = super(Embedding, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
