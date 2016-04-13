@@ -280,7 +280,7 @@ class dumbFilter(Recurrent):
         initial_state = K.zeros_like(x)  # (samples, timesteps, input_dim)
         initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
         reducer = K.zeros((self.input_dim, self.filter_size))
-        initial_states = K.dot(initial_state, reducer) # (samples, filter_size)
+        initial_states = [K.dot(initial_state, reducer)] # (samples, filter_size)
         return initial_states
 
     def preprocess_input(self, x, train=False):
@@ -294,19 +294,29 @@ class dumbFilter(Recurrent):
 
         a = x[:, :, :self.hidden_dim]
         va = x[:, :, self.hidden_dim:]
-        a_p = time_distributed_dense(a, self.W_i, self.b_i, dropout, input_dim, self.hidden_dim, timesteps)
+        a_p = time_distributed_dense(a, self.W_i, self.b_i, dropout, self.hidden_dim, self.output_dim, timesteps)
         return K.concatenate([a_p, va], axis=2)
 
     def step(self, x, states):
-        f_tm1 = states
+        f_tm1 = states[0]
 
         a = self.activation(x[:, :self.output_dim])
         va = x[:, self.output_dim:]
 
         f = f_tm1 + K.repeat_elements(a, rep=self.filter_size, axis=1) * f_tm1
-        y = a + (1-a)*K.sum(va*f_tm1)
+        y = a + (1-a) * K.expand_dims( K.sum(va, axis=1), dim=1)
 
         return y, [f]
+
+    # def get_input_mask(self, train=False):
+    #     X = self.get_input(train)
+    #     X = X[:, :, self.hidden_dim+1:]
+    #     X = K.sum(X, axis=2)
+    #     return  X
+
+    #def get_output_mask(self, train=False):
+
+
 
     def get_config(self):
         config = {"output_dim": self.output_dim,

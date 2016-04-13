@@ -610,10 +610,13 @@ class Merge(Layer):
         return self.get_input()
 
     def supports_masked_input(self):
-        return False
+        return True #False
+
+    def get_input_mask(self, train=False): #
+        return self.layers[-1].get_output_mask(train) #
 
     def get_output_mask(self, train=None):
-        return None
+        return self.get_input_mask(train) #None
 
     def get_weights(self):
         weights = []

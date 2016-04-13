@@ -56,7 +56,7 @@ model = Graph()
 model.add_input(name='input', input_shape=(my_maxlen,), dtype='int32')
 model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
 model.add_node(LSTM(output_dim=100, return_sequences=True), name='LSTM', input='one_hot')
-model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['one_hot','LSTM'])
+model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['LSTM','one_hot'])
 model.add_output(name='output', input='filter')
 model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 
@@ -66,7 +66,14 @@ model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 # model.add(SimpleRNN(output_dim=1, activation='sigmoid'))
 # model.compile(optimizer=RMS, loss='binary_crossentropy')
 
-print model.predict({'input':train_X[0:10]})
+print 'Training X:'
+print train_X[0:1]
+print 'Training Y:'
+print np.squeeze( train_y[0:1] )
+print 'Predicted Y:'
+print np.squeeze( model.predict({'input':train_X[0:1]})['output'] )
+print 'Loss: ',
+print model.evaluate({'input':train_X[0:1], 'output':train_y[0:1]})
 
 #model.fit(train_X, train_y, nb_epoch=20, batch_size=100, show_accuracy=True)
 
