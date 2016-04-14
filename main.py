@@ -3,6 +3,7 @@ import numpy as np
 from keras.models import Graph
 from keras.layers.core import Dense, Dropout, Activation
 from keras.layers.recurrent import SimpleRNN, LSTM
+from keras.layers.recurrent_sparse import sparse_SimpleRNN, sparse_LSTM
 from keras.layers.embeddings import Embedding, OneHotEmbedding
 from keras.layers.ds_enhanced import DeepSet, LSTM2, dumbFilter
 from keras.optimizers import RMSprop
@@ -55,9 +56,9 @@ RMS = RMSprop(lr=0.005)
 
 # Neural network description
 model = Graph()
-model.add_input(name='input', input_shape=(my_maxlen,vocab_size))
+model.add_input(name='input', input_shape=(my_maxlen,1))
 #model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
-model.add_node(LSTM(output_dim=100, return_sequences=True), name='LSTM', input='input')
+model.add_node(sparse_LSTM(output_dim=100, input_dim=vocab_size, return_sequences=True), name='LSTM', input='input')
 model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['LSTM','input'])
 model.add_output(name='output', input='filter')
 model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})

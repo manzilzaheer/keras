@@ -7,13 +7,9 @@ from .. import activations, initializations, regularizers
 from ..layers.core import MaskedLayer
 
 
-def time_distributed_dense(x, w, b=None, dropout=None,
-                           input_dim=None, output_dim=None, timesteps=None):
+def sparse_time_distributed_dense(x, w, b=None, dropout=None,output_dim=None, timesteps=None):
     '''Apply y.w + b for every temporal slice y of x.
     '''
-    if not input_dim:
-        # won't work with TensorFlow
-        input_dim = K.shape(x)[2]
     if not timesteps:
         # won't work with TensorFlow
         timesteps = K.shape(x)[1]
@@ -23,15 +19,15 @@ def time_distributed_dense(x, w, b=None, dropout=None,
 
     if dropout:
         # apply the same dropout pattern at every timestep
-        ones = K.ones_like(K.reshape(x[:, 0, :], (-1, input_dim)))
+        ones = K.ones_like(x[:, 0])
         dropout_matrix = K.dropout(ones, dropout)
         expanded_dropout_matrix = K.repeat(dropout_matrix, timesteps)
         x *= expanded_dropout_matrix
 
     # collapse time dimension and batch dimension together
-    x = K.reshape(x, (-1, input_dim))
+    x = K.flatten(x)
 
-    x = K.dot(x, w)
+    x = K.gather(w,x)
     if b:
         x = x + b
     # reshape to 3D tensor
@@ -39,7 +35,7 @@ def time_distributed_dense(x, w, b=None, dropout=None,
     return x
 
 
-class Recurrent(MaskedLayer):
+class sparse_Recurrent(MaskedLayer):
     '''Abstract base class for recurrent layers.
     Do not use in a model -- it's not a functional layer!
 
@@ -128,12 +124,12 @@ class Recurrent(MaskedLayer):
         self.input_dim = input_dim
         self.input_length = input_length
         if self.input_dim:
-            kwargs['input_shape'] = (self.input_length, self.input_dim)
-        super(Recurrent, self).__init__(**kwargs)
+            kwargs['input_shape'] = (self.input_length, 1)
+        super(sparse_Recurrent, self).__init__(**kwargs)
 
     def get_output_mask(self, train=False):
         if self.return_sequences:
-            return super(Recurrent, self).get_output_mask(train)
+            return super(sparse_Recurrent, self).get_output_mask(train)
         else:
             return None
 
@@ -164,7 +160,7 @@ class Recurrent(MaskedLayer):
         return x
 
     def get_output(self, train=False):
-        # input shape: (nb_samples, time (padded with zeros), input_dim)
+        # input shape: (nb_samples, time (padded with zeros))
         X = self.get_input(train)
         mask = self.get_input_mask(train)
 
@@ -213,11 +209,11 @@ class Recurrent(MaskedLayer):
             config['input_dim'] = self.input_dim
             config['input_length'] = self.input_length
 
-        base_config = super(Recurrent, self).get_config()
+        base_config = super(sparse_Recurrent, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class SimpleRNN(Recurrent):
+class sparse_SimpleRNN(sparse_Recurrent):
     '''Fully-connected RNN where the output is to be fed back to input.
 
     # Arguments
@@ -254,7 +250,7 @@ class SimpleRNN(Recurrent):
         self.U_regularizer = regularizers.get(U_regularizer)
         self.b_regularizer = regularizers.get(b_regularizer)
         self.dropout_W, self.dropout_U = dropout_W, dropout_U
-        super(SimpleRNN, self).__init__(**kwargs)
+        super(sparse_SimpleRNN, self).__init__(**kwargs)
 
     def build(self):
         input_shape = self.input_shape
@@ -266,10 +262,8 @@ class SimpleRNN(Recurrent):
         input_dim = input_shape[2]
         self.input_dim = input_dim
 
-        self.W = self.init((input_dim, self.output_dim),
-                           name='{}_W'.format(self.name))
-        self.U = self.inner_init((self.output_dim, self.output_dim),
-                                 name='{}_U'.format(self.name))
+        self.W = self.init((input_dim, self.output_dim), name='{}_W'.format(self.name))
+        self.U = self.inner_init((self.output_dim, self.output_dim), name='{}_U'.format(self.name))
         self.b = K.zeros((self.output_dim,), name='{}_b'.format(self.name))
 
         self.regularizers = []
@@ -309,8 +303,7 @@ class SimpleRNN(Recurrent):
         input_shape = self.input_shape
         input_dim = input_shape[2]
         timesteps = input_shape[1]
-        return time_distributed_dense(x, self.W, self.b, dropout,
-                                      input_dim, self.output_dim, timesteps)
+        return sparse_time_distributed_dense(x, self.W, self.b, dropout, self.output_dim, timesteps)
 
     def step(self, h, states):
         prev_output = states[0]
@@ -339,11 +332,11 @@ class SimpleRNN(Recurrent):
                   "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
                   "dropout_W": self.dropout_W,
                   "dropout_U": self.dropout_U}
-        base_config = super(SimpleRNN, self).get_config()
+        base_config = super(sparse_SimpleRNN, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class GRU(Recurrent):
+class sparse_GRU(sparse_Recurrent):
     '''Gated Recurrent Unit - Cho et al. 2014.
 
     # Arguments
@@ -384,46 +377,34 @@ class GRU(Recurrent):
         self.U_regularizer = regularizers.get(U_regularizer)
         self.b_regularizer = regularizers.get(b_regularizer)
         self.dropout_W, self.dropout_U = dropout_W, dropout_U
-        super(GRU, self).__init__(**kwargs)
+        super(sparse_GRU, self).__init__(**kwargs)
 
     def build(self):
         input_shape = self.input_shape
         input_dim = input_shape[2]
         self.input_dim = input_dim
 
-        self.W_z = self.init((input_dim, self.output_dim),
-                             name='{}_W_z'.format(self.name))
-        self.U_z = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_z'.format(self.name))
+        self.W_z = self.init((input_dim, self.output_dim), name='{}_W_z'.format(self.name))
+        self.U_z = self.inner_init((self.output_dim, self.output_dim), name='{}_U_z'.format(self.name))
         self.b_z = K.zeros((self.output_dim,), name='{}_b_z'.format(self.name))
 
-        self.W_r = self.init((input_dim, self.output_dim),
-                             name='{}_W_r'.format(self.name))
-        self.U_r = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_r'.format(self.name))
+        self.W_r = self.init((input_dim, self.output_dim), name='{}_W_r'.format(self.name))
+        self.U_r = self.inner_init((self.output_dim, self.output_dim), name='{}_U_r'.format(self.name))
         self.b_r = K.zeros((self.output_dim,), name='{}_b_r'.format(self.name))
 
-        self.W_h = self.init((input_dim, self.output_dim),
-                             name='{}_W_h'.format(self.name))
-        self.U_h = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_h'.format(self.name))
+        self.W_h = self.init((input_dim, self.output_dim), name='{}_W_h'.format(self.name))
+        self.U_h = self.inner_init((self.output_dim, self.output_dim), name='{}_U_h'.format(self.name))
         self.b_h = K.zeros((self.output_dim,), name='{}_b_h'.format(self.name))
 
         self.regularizers = []
         if self.W_regularizer:
-            self.W_regularizer.set_param(K.concatenate([self.W_z,
-                                                        self.W_r,
-                                                        self.W_h]))
+            self.W_regularizer.set_param(K.concatenate([self.W_z, self.W_r, self.W_h]))
             self.regularizers.append(self.W_regularizer)
         if self.U_regularizer:
-            self.U_regularizer.set_param(K.concatenate([self.U_z,
-                                                        self.U_r,
-                                                        self.U_h]))
+            self.U_regularizer.set_param(K.concatenate([self.U_z, self.U_r, self.U_h]))
             self.regularizers.append(self.U_regularizer)
         if self.b_regularizer:
-            self.b_regularizer.set_param(K.concatenate([self.b_z,
-                                                        self.b_r,
-                                                        self.b_h]))
+            self.b_regularizer.set_param(K.concatenate([self.b_z, self.b_r, self.b_h]))
             self.regularizers.append(self.b_regularizer)
 
         self.trainable_weights = [self.W_z, self.U_z, self.b_z,
@@ -460,12 +441,9 @@ class GRU(Recurrent):
         input_dim = input_shape[2]
         timesteps = input_shape[1]
 
-        x_z = time_distributed_dense(x, self.W_z, self.b_z, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_r = time_distributed_dense(x, self.W_r, self.b_r, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_h = time_distributed_dense(x, self.W_h, self.b_h, dropout,
-                                     input_dim, self.output_dim, timesteps)
+        x_z = sparse_time_distributed_dense(x, self.W_z, self.b_z, dropout, self.output_dim, timesteps)
+        x_r = sparse_time_distributed_dense(x, self.W_r, self.b_r, dropout, self.output_dim, timesteps)
+        x_h = sparse_time_distributed_dense(x, self.W_h, self.b_h, dropout, self.output_dim, timesteps)
         return K.concatenate([x_z, x_r, x_h], axis=2)
 
     def step(self, x, states):
@@ -505,11 +483,11 @@ class GRU(Recurrent):
                   "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
                   "dropout_W": self.dropout_W,
                   "dropout_U": self.dropout_U}
-        base_config = super(GRU, self).get_config()
+        base_config = super(sparse_GRU, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class LSTM(Recurrent):
+class sparse_LSTM(sparse_Recurrent):
     '''Long-Short Term Memory unit - Hochreiter 1997.
 
     For a step-by-step description of the algorithm, see
@@ -559,12 +537,15 @@ class LSTM(Recurrent):
         self.U_regularizer = regularizers.get(U_regularizer)
         self.b_regularizer = regularizers.get(b_regularizer)
         self.dropout_W, self.dropout_U = dropout_W, dropout_U
-        super(LSTM, self).__init__(**kwargs)
+        super(sparse_LSTM, self).__init__(**kwargs)
+
 
     def build(self):
-        input_shape = self.input_shape
-        input_dim = input_shape[2]
-        self.input_dim = input_dim
+        #input_shape = self.input_shape
+        #input_dim = input_shape[2]
+        #input_dim = self.input_dim
+        print self.input_dim
+        print self.input_shape
 
         if self.stateful:
             self.reset_states()
@@ -572,49 +553,31 @@ class LSTM(Recurrent):
             # initial states: 2 all-zero tensors of shape (output_dim)
             self.states = [None, None]
 
-        self.W_i = self.init((input_dim, self.output_dim),
-                             name='{}_W_i'.format(self.name))
-        self.U_i = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_i'.format(self.name))
+        self.W_i = self.init((self.input_dim, self.output_dim), name='{}_W_i'.format(self.name))
+        self.U_i = self.inner_init((self.output_dim, self.output_dim), name='{}_U_i'.format(self.name))
         self.b_i = K.zeros((self.output_dim,), name='{}_b_i'.format(self.name))
 
-        self.W_f = self.init((input_dim, self.output_dim),
-                             name='{}_W_f'.format(self.name))
-        self.U_f = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_f'.format(self.name))
-        self.b_f = self.forget_bias_init((self.output_dim,),
-                                         name='{}_b_f'.format(self.name))
+        self.W_f = self.init((self.input_dim, self.output_dim), name='{}_W_f'.format(self.name))
+        self.U_f = self.inner_init((self.output_dim, self.output_dim), name='{}_U_f'.format(self.name))
+        self.b_f = self.forget_bias_init((self.output_dim,), name='{}_b_f'.format(self.name))
 
-        self.W_c = self.init((input_dim, self.output_dim),
-                             name='{}_W_c'.format(self.name))
-        self.U_c = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_c'.format(self.name))
+        self.W_c = self.init((self.input_dim, self.output_dim), name='{}_W_c'.format(self.name))
+        self.U_c = self.inner_init((self.output_dim, self.output_dim), name='{}_U_c'.format(self.name))
         self.b_c = K.zeros((self.output_dim,), name='{}_b_c'.format(self.name))
 
-        self.W_o = self.init((input_dim, self.output_dim),
-                             name='{}_W_o'.format(self.name))
-        self.U_o = self.inner_init((self.output_dim, self.output_dim),
-                                   name='{}_U_o'.format(self.name))
+        self.W_o = self.init((self.input_dim, self.output_dim), name='{}_W_o'.format(self.name))
+        self.U_o = self.inner_init((self.output_dim, self.output_dim), name='{}_U_o'.format(self.name))
         self.b_o = K.zeros((self.output_dim,), name='{}_b_o'.format(self.name))
 
         self.regularizers = []
         if self.W_regularizer:
-            self.W_regularizer.set_param(K.concatenate([self.W_i,
-                                                        self.W_f,
-                                                        self.W_c,
-                                                        self.W_o]))
+            self.W_regularizer.set_param(K.concatenate([self.W_i, self.W_f, self.W_c, self.W_o]))
             self.regularizers.append(self.W_regularizer)
         if self.U_regularizer:
-            self.U_regularizer.set_param(K.concatenate([self.U_i,
-                                                        self.U_f,
-                                                        self.U_c,
-                                                        self.U_o]))
+            self.U_regularizer.set_param(K.concatenate([self.U_i, self.U_f, self.U_c, self.U_o]))
             self.regularizers.append(self.U_regularizer)
         if self.b_regularizer:
-            self.b_regularizer.set_param(K.concatenate([self.b_i,
-                                                        self.b_f,
-                                                        self.b_c,
-                                                        self.b_o]))
+            self.b_regularizer.set_param(K.concatenate([self.b_i, self.b_f, self.b_c, self.b_o]))
             self.regularizers.append(self.b_regularizer)
 
         self.trainable_weights = [self.W_i, self.U_i, self.b_i,
@@ -647,17 +610,12 @@ class LSTM(Recurrent):
         else:
             dropout = 0
         input_shape = self.input_shape
-        input_dim = input_shape[2]
         timesteps = input_shape[1]
 
-        x_i = time_distributed_dense(x, self.W_i, self.b_i, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_f = time_distributed_dense(x, self.W_f, self.b_f, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_c = time_distributed_dense(x, self.W_c, self.b_c, dropout,
-                                     input_dim, self.output_dim, timesteps)
-        x_o = time_distributed_dense(x, self.W_o, self.b_o, dropout,
-                                     input_dim, self.output_dim, timesteps)
+        x_i = sparse_time_distributed_dense(x, self.W_i, self.b_i, dropout, self.output_dim, timesteps)
+        x_f = sparse_time_distributed_dense(x, self.W_f, self.b_f, dropout, self.output_dim, timesteps)
+        x_c = sparse_time_distributed_dense(x, self.W_c, self.b_c, dropout, self.output_dim, timesteps)
+        x_o = sparse_time_distributed_dense(x, self.W_o, self.b_o, dropout, self.output_dim, timesteps)
         return K.concatenate([x_i, x_f, x_c, x_o], axis=2)
 
     def step(self, x, states):
@@ -701,5 +659,5 @@ class LSTM(Recurrent):
                   "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
                   "dropout_W": self.dropout_W,
                   "dropout_U": self.dropout_U}
-        base_config = super(LSTM, self).get_config()
+        base_config = super(sparse_LSTM, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
