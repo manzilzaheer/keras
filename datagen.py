@@ -20,18 +20,18 @@ def check(sequence):
 
 
 def main():
-    fx = open('test3_progs.txt', 'w')
-    fy = open('test3_labels.txt', 'w')
+    fx = open('task_progs.txt', 'w')
+    fy = open('task_labels.txt', 'w')
 
     alphabet = list(string.uppercase)
-    for _ in xrange(20000):
+    for _ in xrange(200000):
         a = np.random.random_integers(20,30)
         b = np.random.random_integers(5, 10)
         seen = np.random.choice(alphabet, size=a)
         u = np.random.uniform()
-        if  u < 0:
+        if  u < 0.4:
             query = np.random.choice(seen, size=b)
-        elif u < 0:
+        elif u < 0.7:
             query = np.random.choice(alphabet,size=b)
         else:
             query = np.random.choice(seen, size=b)

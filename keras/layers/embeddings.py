@@ -165,6 +165,8 @@ class OneHotEmbedding(Layer):
 
     def build(self):
         self.input = K.placeholder(shape=(self.input_shape[0], self.input_length), dtype='int32')
+        self.trainable_weights = []
+        self.regularizers = []
 
     def get_output_mask(self, train=None):
         X = self.get_input(train)

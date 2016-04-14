@@ -8,6 +8,8 @@ from keras.layers.ds_enhanced import DeepSet, LSTM2, dumbFilter
 from keras.optimizers import RMSprop
 from keras.preprocessing.sequence import pad_sequences
 
+from keras.backend.common import _FLOATX, _EPSILON
+
 from utils import *
 
 print "Hi"
@@ -27,13 +29,13 @@ token_to_index = dict([(w,i) for i,w in enumerate(vocab)])
 # Create the training data
 my_maxlen = len(max(progs,key=len))
 idx_progs = [[token_to_index[token] for token in prog] for prog in progs]
-train_X = pad_sequences(idx_progs, maxlen=my_maxlen)
-# train_X = np.zeros((num_progs, my_maxlen, vocab_size), dtype='int8')
-# for i, prog in enumerate(idx_progs):
-#     for j, token in enumerate(prog):
-#         train_X[i,j,token] = 1
+#train_X = pad_sequences(idx_progs, maxlen=my_maxlen)
+train_X = np.zeros((num_progs, my_maxlen, vocab_size), dtype='int8')
+for i, prog in enumerate(idx_progs):
+    for j, token in enumerate(prog):
+        train_X[i,j,token] = 1
 train_y = np.array(labels, dtype=bool, ndmin=2).transpose()
-train_y = pad_sequences(labels, maxlen=my_maxlen, dtype=float, value=0.5)
+train_y = pad_sequences(labels, maxlen=my_maxlen)
 train_y = np.expand_dims(train_y,axis=2)
 
 print "Example:"
@@ -53,10 +55,10 @@ RMS = RMSprop(lr=0.005)
 
 # Neural network description
 model = Graph()
-model.add_input(name='input', input_shape=(my_maxlen,), dtype='int32')
-model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
-model.add_node(LSTM(output_dim=100, return_sequences=True), name='LSTM', input='one_hot')
-model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['LSTM','one_hot'])
+model.add_input(name='input', input_shape=(my_maxlen,vocab_size))
+#model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
+model.add_node(LSTM(output_dim=100, return_sequences=True), name='LSTM', input='input')
+model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['LSTM','input'])
 model.add_output(name='output', input='filter')
 model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 
@@ -67,14 +69,21 @@ model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 # model.compile(optimizer=RMS, loss='binary_crossentropy')
 
 print 'Training X:'
-print train_X[0:1]
+print progs[0:2]
+print train_X[0:2]
 print 'Training Y:'
-print np.squeeze( train_y[0:1] )
+print np.squeeze( train_y[0:2] )
 print 'Predicted Y:'
-print np.squeeze( model.predict({'input':train_X[0:1]})['output'] )
+pred_y = np.squeeze( model.predict({'input':train_X[0:2]})['output'] )
+print pred_y
 print 'Loss: ',
-print model.evaluate({'input':train_X[0:1], 'output':train_y[0:1]})
+print model.evaluate({'input':train_X[0:2], 'output':train_y[0:2]})
 
-#model.fit(train_X, train_y, nb_epoch=20, batch_size=100, show_accuracy=True)
+pred_y = np.clip(pred_y, _EPSILON, 1-_EPSILON)
+my_ce = np.squeeze( train_y[0:2] )*np.log(pred_y) + (1-np.squeeze( train_y[0:2] ))*np.log(1-pred_y)
+aa = sum(my_ce[0,-10:]) + sum(my_ce[1,-5:])
+print -aa/15
+
+model.fit({'input':train_X, 'output':train_y}, nb_epoch=20, batch_size=100, show_accuracy=True)
 
 print "Hi2"

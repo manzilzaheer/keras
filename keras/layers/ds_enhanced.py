@@ -1,4 +1,5 @@
 import numpy as np
+import theano
 
 from .. import backend as K
 from .recurrent import Recurrent, time_distributed_dense
@@ -300,12 +301,13 @@ class dumbFilter(Recurrent):
     def step(self, x, states):
         f_tm1 = states[0]
 
-        a = self.activation(x[:, :self.output_dim])
+        a = self.activation(1000*x[:, :self.output_dim])
         va = x[:, self.output_dim:]
 
         f = f_tm1 + K.repeat_elements(a, rep=self.filter_size, axis=1) * f_tm1
-        y = a + (1-a) * K.expand_dims( K.sum(va, axis=1), dim=1)
-
+        y = a + (1-a) * K.expand_dims( K.sum(va*f, axis=1), dim=1)
+        #pop = theano.printing.Print('Predicted value')
+        #y = pop(y)
         return y, [f]
 
     # def get_input_mask(self, train=False):
@@ -314,8 +316,16 @@ class dumbFilter(Recurrent):
     #     X = K.sum(X, axis=2)
     #     return  X
 
-    #def get_output_mask(self, train=False):
-
+    def get_output_mask(self, train=False):
+        X = self.get_input(train)
+        X = X[:, :, self.hidden_dim + 1]
+        #X = K.sum(X, axis=2)
+        X1 = K.cumsum(X, axis=1)
+        X = X1 - X
+        #pop = theano.printing.Print('Output Mask')
+        #X = pop(X)
+        X = X * self.get_input_mask(train)
+        return X
 
 
     def get_config(self):
@@ -326,8 +336,7 @@ class dumbFilter(Recurrent):
                   "activation": self.activation.__name__,
                   "W_regularizer": self.W_regularizer.get_config() if self.W_regularizer else None,
                   "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
-                  "dropout_W": self.dropout_W,
-                  "dropout_U": self.dropout_U}
+                  "dropout_W": self.dropout_W}
         base_config = super(dumbFilter, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
