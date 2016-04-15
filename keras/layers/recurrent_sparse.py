@@ -19,7 +19,7 @@ def sparse_time_distributed_dense(x, w, b=None, dropout=None,output_dim=None, ti
 
     if dropout:
         # apply the same dropout pattern at every timestep
-        ones = K.ones_like(x[:, 0])
+        ones = K.ones_like(x[:, 0, :])
         dropout_matrix = K.dropout(ones, dropout)
         expanded_dropout_matrix = K.repeat(dropout_matrix, timesteps)
         x *= expanded_dropout_matrix
@@ -128,8 +128,10 @@ class sparse_Recurrent(MaskedLayer):
         super(sparse_Recurrent, self).__init__(**kwargs)
 
     def get_output_mask(self, train=False):
+        print "I am here as well"
+        X = self.get_input(train)
         if self.return_sequences:
-            return super(sparse_Recurrent, self).get_output_mask(train)
+            return K.not_equal(X[:,:,0], 0)
         else:
             return None
 
@@ -544,6 +546,7 @@ class sparse_LSTM(sparse_Recurrent):
         #input_shape = self.input_shape
         #input_dim = input_shape[2]
         #input_dim = self.input_dim
+        self.input = K.placeholder(shape=self.input_shape, dtype='int32')
         print self.input_dim
         print self.input_shape
 

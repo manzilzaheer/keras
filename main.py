@@ -30,13 +30,15 @@ token_to_index = dict([(w,i) for i,w in enumerate(vocab)])
 # Create the training data
 my_maxlen = len(max(progs,key=len))
 idx_progs = [[token_to_index[token] for token in prog] for prog in progs]
-#train_X = pad_sequences(idx_progs, maxlen=my_maxlen)
-train_X = np.zeros((num_progs, my_maxlen, vocab_size), dtype='int8')
-for i, prog in enumerate(idx_progs):
-    for j, token in enumerate(prog):
-        train_X[i,j,token] = 1
+train_X = pad_sequences(idx_progs, maxlen=my_maxlen)
+# train_X = np.zeros((num_progs, my_maxlen, vocab_size), dtype='int8')
+# for i, prog in enumerate(idx_progs):
+#     for j, token in enumerate(prog):
+#         train_X[i,j,token] = 1
 train_y = np.array(labels, dtype=bool, ndmin=2).transpose()
 train_y = pad_sequences(labels, maxlen=my_maxlen)
+
+#train_X = np.expand_dims(train_X,axis=2)
 train_y = np.expand_dims(train_y,axis=2)
 
 print "Example:"
@@ -52,14 +54,14 @@ print np.squeeze(train_y[29])
 print train_y.shape
 
 
-RMS = RMSprop(lr=0.005)
+RMS = RMSprop(lr=0.5)
 
 # Neural network description
 model = Graph()
-model.add_input(name='input', input_shape=(my_maxlen,1))
-#model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
-model.add_node(sparse_LSTM(output_dim=100, input_dim=vocab_size, return_sequences=True), name='LSTM', input='input')
-model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['LSTM','input'])
+model.add_input(name='input', input_shape=(my_maxlen,), dtype='int')
+model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
+model.add_node(LSTM(output_dim=100, input_dim=vocab_size, return_sequences=True), name='myLSTM', input='one_hot')
+model.add_node(dumbFilter(hidden_dim=100,filter_size=vocab_size), name='filter', inputs=['myLSTM','one_hot'])
 model.add_output(name='output', input='filter')
 model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 

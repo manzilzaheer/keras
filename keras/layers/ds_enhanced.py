@@ -318,7 +318,8 @@ class dumbFilter(Recurrent):
 
     def get_output_mask(self, train=False):
         X = self.get_input(train)
-        X = X[:, :, self.hidden_dim + 1]
+        X = X[:, :, self.hidden_dim+1]
+        #X = K.equal(X,1)
         #X = K.sum(X, axis=2)
         X1 = K.cumsum(X, axis=1)
         X = X1 - X
