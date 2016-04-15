@@ -53,16 +53,16 @@ print np.squeeze(train_y[29])
 print train_y.shape
 
 
-RMS = RMSprop(lr=0.5)
+RMS = RMSprop(lr=0.05)
 
 # Neural network description
 model = Graph()
 model.add_input(name='input', input_shape=(my_maxlen,), dtype='int')
 model.add_node(OneHotEmbedding(output_dim=vocab_size, input_dim=vocab_size, mask_zero=True), name='one_hot', input='input')
-model.add_node(LSTM(output_dim=10, input_dim=vocab_size, return_sequences=True, activation='hard_sigmoid'), name='myLSTM', input='one_hot')
-model.add_node(dumbFilter(hidden_dim=10,filter_size=vocab_size), name='filter', inputs=['myLSTM','one_hot'])
+model.add_node(LSTM(output_dim=1, input_dim=vocab_size, return_sequences=True, activation='tanh'), name='myLSTM', input='one_hot')
+model.add_node(dumbFilter2(hidden_dim=1,filter_size=vocab_size), name='filter', inputs=['myLSTM','one_hot'])
 model.add_output(name='output', input='filter')
-model.compile(optimizer='SGD', loss={'output':'binary_crossentropy'})
+model.compile(optimizer=RMS, loss={'output':'binary_crossentropy'})
 
 # model.add(Embedding(output_dim=64, input_dim=vocab_size, mask_zero=True))
 # model.add(DeepSet(hidden_dim=10,filter_size=10))

@@ -417,31 +417,31 @@ class dumbFilter2(Recurrent):
     def step(self, x, states):
         f_tm1 = states[0]
 
-        a = x[:, :self.output_dim]
+        a = K.hard_sigmoid(10* x[:, :self.output_dim])
         va = x[:, self.output_dim:]
 
-        a = theano.printing.Print('Add gate')(a)
-        va = theano.printing.Print('Add value')(va)
+        #a = theano.printing.Print('Add gate')(a)
+        #va = theano.printing.Print('Add value')(va)
 
         f = K.maximum( f_tm1 , K.repeat_elements(a, rep=self.filter_size, axis=1) * va)
         y = K.expand_dims( K.sum(va*f, axis=1), dim=1)
 
-        f = theano.printing.Print('Filter')(f)
-        y = theano.printing.Print('Predicted value')(y)
+        #f = theano.printing.Print('Filter')(f)
+        #y = theano.printing.Print('Predicted value')(y)
 
         return y, [f]
 
-    # def get_output_mask(self, train=False):
-    #     X = self.get_input(train)
-    #     X = X[:, :, self.hidden_dim+1]
-    #     #X = K.equal(X,1)
-    #     #X = K.sum(X, axis=2)
-    #     X1 = K.cumsum(X, axis=1)
-    #     X = X1 - X
-    #     #pop = theano.printing.Print('Output Mask')
-    #     #X = pop(X)
-    #     X = X * self.get_input_mask(train)
-    #     return X
+    def get_output_mask(self, train=False):
+        X = self.get_input(train)
+        X = X[:, :, self.hidden_dim+1]
+        #X = K.equal(X,1)
+        #X = K.sum(X, axis=2)
+        X1 = K.cumsum(X, axis=1)
+        X = X1 - X
+        #pop = theano.printing.Print('Output Mask')
+        #X = pop(X)
+        X = X * self.get_input_mask(train)
+        return X
 
 
     def get_config(self):

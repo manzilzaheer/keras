@@ -42,7 +42,7 @@ def load_char_data(dataset):
         labels = f.readlines()
         labels = [list(label) for label in labels]
         labels = [label[:-1] for label in labels]
-        labels = [[int(c) if int(c)!=2 else 1 for c in label] for label in labels]
+        labels = [[int(c) if int(c)!=2 else 0 for c in label] for label in labels]
         #labels = [bool(int(l)) for l in f]
 
     num_progs = len(progs)
