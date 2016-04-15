@@ -223,7 +223,7 @@ class dumbFilter(Recurrent):
 
     '''
     def __init__(self, hidden_dim, filter_size,
-                 init='glorot_uniform', activation='sigmoid',
+                 init='glorot_uniform', activation='hard_sigmoid',
                  W_regularizer=None,b_regularizer=None,
                  dropout_W=0., **kwargs):
         self.output_dim = 1
@@ -293,7 +293,7 @@ class dumbFilter(Recurrent):
         input_dim = input_shape[2]
         timesteps = input_shape[1]
 
-        a = x[:, :, :self.hidden_dim]
+        a = self.activation(x[:, :, :self.hidden_dim])
         va = x[:, :, self.hidden_dim:]
         a_p = time_distributed_dense(a, self.W_i, self.b_i, dropout, self.hidden_dim, self.output_dim, timesteps)
         return K.concatenate([a_p, va], axis=2)
@@ -301,13 +301,18 @@ class dumbFilter(Recurrent):
     def step(self, x, states):
         f_tm1 = states[0]
 
-        a = self.activation(1000*x[:, :self.output_dim])
+        a = self.activation(x[:, :self.output_dim])
         va = x[:, self.output_dim:]
 
-        f = f_tm1 + K.repeat_elements(a, rep=self.filter_size, axis=1) * f_tm1
-        y = a + (1-a) * K.expand_dims( K.sum(va*f, axis=1), dim=1)
-        #pop = theano.printing.Print('Predicted value')
-        #y = pop(y)
+        #a = theano.printing.Print('Add gate')(a)
+        #va = theano.printing.Print('Add value')(va)
+
+        f = K.maximum( f_tm1 , K.repeat_elements(a, rep=self.filter_size, axis=1) * va)
+        y = K.expand_dims( K.sum(va*f, axis=1), dim=1)
+
+        #f = theano.printing.Print('Filter')(f)
+        #y = theano.printing.Print('Predicted value')(y)
+
         return y, [f]
 
     # def get_input_mask(self, train=False):
@@ -316,17 +321,17 @@ class dumbFilter(Recurrent):
     #     X = K.sum(X, axis=2)
     #     return  X
 
-    def get_output_mask(self, train=False):
-        X = self.get_input(train)
-        X = X[:, :, self.hidden_dim+1]
-        #X = K.equal(X,1)
-        #X = K.sum(X, axis=2)
-        X1 = K.cumsum(X, axis=1)
-        X = X1 - X
-        #pop = theano.printing.Print('Output Mask')
-        #X = pop(X)
-        X = X * self.get_input_mask(train)
-        return X
+    # def get_output_mask(self, train=False):
+    #     X = self.get_input(train)
+    #     X = X[:, :, self.hidden_dim+1]
+    #     #X = K.equal(X,1)
+    #     #X = K.sum(X, axis=2)
+    #     X1 = K.cumsum(X, axis=1)
+    #     X = X1 - X
+    #     #pop = theano.printing.Print('Output Mask')
+    #     #X = pop(X)
+    #     X = X * self.get_input_mask(train)
+    #     return X
 
 
     def get_config(self):
@@ -341,6 +346,260 @@ class dumbFilter(Recurrent):
         base_config = super(dumbFilter, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+class dumbFilter2(Recurrent):
+    '''Deep Bloom Filter.
+
+    # Arguments
+        output_dim: dimension of the internal projections and the final output.
+        init: weight initialization function.
+            Can be the name of an existing function (str),
+            or a Theano function (see: [initializations](../initializations.md)).
+        inner_init: initialization function of the inner cells.
+        forget_bias_init: initialization function for the bias of the forget gate.
+            [Jozefowicz et al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+            recommend initializing with ones.
+        activation: activation function.
+            Can be the name of an existing function (str),
+            or a Theano function (see: [activations](../activations.md)).
+        inner_activation: activation function for the inner cells.
+        W_regularizer: instance of [WeightRegularizer](../regularizers.md)
+            (eg. L1 or L2 regularization), applied to the input weights matrices.
+        U_regularizer: instance of [WeightRegularizer](../regularizers.md)
+            (eg. L1 or L2 regularization), applied to the recurrent weights matrices.
+        b_regularizer: instance of [WeightRegularizer](../regularizers.md),
+            applied to the bias.
+        dropout_W: float between 0 and 1. Fraction of the input units to drop for input gates.
+        dropout_U: float between 0 and 1. Fraction of the input units to drop for recurrent connections.
+
+    '''
+    def __init__(self, hidden_dim, filter_size, **kwargs):
+        self.output_dim = 1
+        self.hidden_dim = hidden_dim
+        self.filter_size = filter_size
+        kwargs['return_sequences'] = True
+        super(dumbFilter2, self).__init__(**kwargs)
+
+    def build(self):
+        input_shape = self.input_shape
+        input_dim = input_shape[2]
+        self.input_dim = input_dim
+
+        if self.stateful:
+            self.reset_states()
+        else:
+            # initial states: all-zero tensors of shape (filter_size)
+            self.states = [None]
+
+        self.regularizers = []
+        self.trainable_weights = []
+
+    def reset_states(self):
+        assert self.stateful, 'Layer must be stateful.'
+        input_shape = self.input_shape
+        if not input_shape[0]:
+            raise Exception('If a RNN is stateful, a complete input_shape must be provided (including batch size).')
+        if hasattr(self, 'states'):
+            K.set_value(self.states[0], np.zeros((input_shape[0], self.filter_size)))
+        else:
+            self.states = [K.zeros((input_shape[0], self.filter_size))]
+
+    def get_initial_states(self, x):
+        # build an all-zero tensor of shape (samples, filter_size)
+        initial_state = K.zeros_like(x)  # (samples, timesteps, input_dim)
+        initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
+        reducer = K.zeros((self.input_dim, self.filter_size))
+        initial_states = [K.dot(initial_state, reducer)] # (samples, filter_size)
+        return initial_states
+
+    def preprocess_input(self, x, train=False):
+        return x
+
+    def step(self, x, states):
+        f_tm1 = states[0]
+
+        a = x[:, :self.output_dim]
+        va = x[:, self.output_dim:]
+
+        a = theano.printing.Print('Add gate')(a)
+        va = theano.printing.Print('Add value')(va)
+
+        f = K.maximum( f_tm1 , K.repeat_elements(a, rep=self.filter_size, axis=1) * va)
+        y = K.expand_dims( K.sum(va*f, axis=1), dim=1)
+
+        f = theano.printing.Print('Filter')(f)
+        y = theano.printing.Print('Predicted value')(y)
+
+        return y, [f]
+
+    # def get_output_mask(self, train=False):
+    #     X = self.get_input(train)
+    #     X = X[:, :, self.hidden_dim+1]
+    #     #X = K.equal(X,1)
+    #     #X = K.sum(X, axis=2)
+    #     X1 = K.cumsum(X, axis=1)
+    #     X = X1 - X
+    #     #pop = theano.printing.Print('Output Mask')
+    #     #X = pop(X)
+    #     X = X * self.get_input_mask(train)
+    #     return X
+
+
+    def get_config(self):
+        config = {"output_dim": self.output_dim,
+                  "hidden_dim": self.hidden_dim,
+                  "filter_size": self.filter_size}
+        base_config = super(dumbFilter2, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+class exeFilter(Recurrent):
+    '''Deep Bloom Filter.
+
+    # Arguments
+        output_dim: dimension of the internal projections and the final output.
+        init: weight initialization function.
+            Can be the name of an existing function (str),
+            or a Theano function (see: [initializations](../initializations.md)).
+        inner_init: initialization function of the inner cells.
+        forget_bias_init: initialization function for the bias of the forget gate.
+            [Jozefowicz et al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+            recommend initializing with ones.
+        activation: activation function.
+            Can be the name of an existing function (str),
+            or a Theano function (see: [activations](../activations.md)).
+        inner_activation: activation function for the inner cells.
+        W_regularizer: instance of [WeightRegularizer](../regularizers.md)
+            (eg. L1 or L2 regularization), applied to the input weights matrices.
+        U_regularizer: instance of [WeightRegularizer](../regularizers.md)
+            (eg. L1 or L2 regularization), applied to the recurrent weights matrices.
+        b_regularizer: instance of [WeightRegularizer](../regularizers.md),
+            applied to the bias.
+        dropout_W: float between 0 and 1. Fraction of the input units to drop for input gates.
+        dropout_U: float between 0 and 1. Fraction of the input units to drop for recurrent connections.
+
+    '''
+    def __init__(self, filter_size,
+                 init='glorot_uniform', activation='tanh',
+                 W_regularizer=None, b_regularizer=None,
+                 dropout_W=0, **kwargs):
+        self.output_dim = 1
+        self.hidden_dim = 1
+        self.filter_size = filter_size
+        self.init = initializations.get(init)
+        self.activation = activations.get(activation)
+        self.W_regularizer = regularizers.get(W_regularizer)
+        self.b_regularizer = regularizers.get(b_regularizer)
+        self.dropout_W = dropout_W
+        kwargs['return_sequences'] = True
+        super(exeFilter, self).__init__(**kwargs)
+
+    def build(self):
+        input_shape = self.input_shape
+        input_dim = input_shape[2]
+        self.input_dim = input_dim
+
+        if self.stateful:
+            self.reset_states()
+        else:
+            # initial states: 2 all-zero tensors of shape (hidden_dim, filter_size)
+            self.states = [None, None]
+
+        # input-hidden transformation
+        self.W_i1 = self.init((input_dim, 200), name='{}_W_i1'.format(self.name))
+        self.b_i1 = K.zeros((200,), name='{}_b_i1'.format(self.name))
+
+        self.W_i2 = self.init((200, self.filter_size), name='{}_W_i2'.format(self.name))
+        self.b_i2 = K.zeros((self.filter_size,), name='{}_b_i2'.format(self.name))
+
+        self.regularizers = []
+        if self.W_regularizer:
+            self.W_regularizer.set_param(K.concatenate([self.W_i1, self.W_i2]))
+            self.regularizers.append(self.W_regularizer)
+        if self.b_regularizer:
+            self.b_regularizer.set_param(K.concatenate([self.b_i1, self.b_i2]))
+            self.regularizers.append(self.b_regularizer)
+
+        self.trainable_weights = [self.W_i1, self.b_i1,
+                                  self.W_i2, self.b_i2]
+
+        if self.initial_weights is not None:
+            self.set_weights(self.initial_weights)
+            del self.initial_weights
+
+    def reset_states(self):
+        assert self.stateful, 'Layer must be stateful.'
+        input_shape = self.input_shape
+        if not input_shape[0]:
+            raise Exception('If a RNN is stateful, a complete input_shape must be provided (including batch size).')
+        if hasattr(self, 'states'):
+            K.set_value(self.states[0], np.zeros((input_shape[0], self.hidden_dim)))
+            K.set_value(self.states[1], np.zeros((input_shape[0], self.filter_size)))
+        else:
+            self.states = [K.zeros((input_shape[0], self.hidden_dim)),
+                           K.zeros((input_shape[1], self.filter_size))]
+
+    def get_initial_states(self, x):
+        # build an all-zero tensor of shape (samples, filter_size)
+        initial_state = K.zeros_like(x)  # (samples, timesteps, input_dim)
+        initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
+        reducer0 = K.zeros((self.input_dim, self.hidden_dim))
+        reducer1 = K.zeros((self.input_dim, self.filter_size))
+        initial_states = [K.dot(initial_state, reducer0), K.dot(initial_state, reducer1)] # [(samples, hidden_dim) (samples, filter_size)]
+        return initial_states
+
+    def preprocess_input(self, x, train=False):
+        # if train and (0 < self.dropout_W < 1):
+        #     dropout = self.dropout_W
+        # else:
+        #     dropout = 0
+        # input_shape = self.input_shape
+        # input_dim = input_shape[2]
+        # timesteps = input_shape[1]
+        #
+        # x = time_distributed_dense(x, self.W_i, self.b_i, dropout, input_dim, self.filter_size, timesteps)
+        return x
+
+    def step(self, x, states):
+        flag = states[0]
+        f_tm1 = states[1]
+
+        flag = flag + x[:, 1:2]
+        z = self.activation(K.dot(x, self.W_i1) + self.b_i1)
+        va = K.softmax( 10* ( K.dot(z, self.W_i2) + self.b_i2 ) )
+
+        #flag = theano.printing.Print('Flag state')(flag)
+        #va = theano.printing.Print('Add value')(va)
+
+        f = K.maximum( f_tm1 , K.repeat_elements(1-flag, rep=self.filter_size, axis=1) * va)
+        y = K.expand_dims( K.sum(va*f, axis=1), dim=1)
+
+        #f = theano.printing.Print('Filter')(f)
+        #y = theano.printing.Print('Predicted value')(y)
+
+        return y, [flag, f]
+
+    # def get_output_mask(self, train=False):
+    #     X = self.get_input(train)
+    #     X = X[:, :, self.hidden_dim+1]
+    #     #X = K.equal(X,1)
+    #     #X = K.sum(X, axis=2)
+    #     X1 = K.cumsum(X, axis=1)
+    #     X = X1 - X
+    #     #pop = theano.printing.Print('Output Mask')
+    #     #X = pop(X)
+    #     X = X * self.get_input_mask(train)
+    #     return X
+
+    def get_config(self):
+        config = {"output_dim": self.output_dim,
+                  "hidden_dim": self.hidden_dim,
+                  "filter_size": self.filter_size,
+                  "init": self.init.__name__,
+                  "activation": self.activation.__name__,
+                  "W_regularizer": self.W_regularizer.get_config() if self.W_regularizer else None,
+                  "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
+                  "dropout_W": self.dropout_W}
+        base_config = super(exeFilter, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 class LSTM2(Recurrent):
     '''Deep Bloom Filter.

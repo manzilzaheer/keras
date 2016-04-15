@@ -216,6 +216,10 @@ def not_equal(x, y):
     return T.neq(x, y)
 
 
+def less_than(x, y):
+    return T.lt(x, y)
+
+
 def maximum(x, y):
     return T.maximum(x, y)
 

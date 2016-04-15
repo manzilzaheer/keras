@@ -8,10 +8,11 @@ def check(sequence):
     set = {}
     for c in sequence:
         if flag:
-            y.append('2')
             if c == '!':
+                y.append('0')
                 flag = False
             else:
+                y.append('2')
                 set[c]=True
         else:
             y.append(str(int(set.has_key(c))))
@@ -29,9 +30,11 @@ def main():
         b = np.random.random_integers(5, 10)
         seen = np.random.choice(alphabet, size=a)
         u = np.random.uniform()
-        if  u < 0.4:
+        if  u < 0.3:
             query = np.random.choice(seen, size=b)
-        elif u < 0.7:
+        elif u < 0.6:
+            query = np.random.choice(np.setdiff1d(alphabet,seen), size=b)
+        elif u < 0.8:
             query = np.random.choice(alphabet,size=b)
         else:
             query = np.random.choice(seen, size=b)
