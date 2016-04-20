@@ -1285,8 +1285,10 @@ class Graph(Model, containers.Graph):
                                   ' (1-dimensional features), but you are using ' +
                                   ' the `categorical_crossentropy` loss. You ' +
                                   'almost certainly want to use `binary_crossentropy` instead.')
-                train_accuracy = K.sum(K.expand_dims(mask, dim=2)*K.equal(y, K.round(y_train)))/K.sum(mask)
-                test_accuracy = K.sum(K.expand_dims(mask, dim=2)*K.equal(y, K.round(y_test)))/K.sum(mask)
+                #train_accuracy = K.sum(K.expand_dims(mask, dim=2)*K.equal(y, K.round(y_train)))/K.sum(mask)
+                #test_accuracy = K.sum(K.expand_dims(mask, dim=2)*K.equal(y, K.round(y_test)))/K.sum(mask)
+                train_accuracy = K.mean(K.equal(y, K.round(y_train)))
+                test_accuracy = K.mean(K.equal(y, K.round(y_test)))
         else:
             self.class_mode = None
 
