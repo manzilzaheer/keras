@@ -19,14 +19,15 @@ def check(sequence):
 
 
 def main():
-    fx = open('task1_progs.txt', 'w')
-    fy = open('task1_labels.txt', 'w')
+    fx = open('test6_progs.txt', 'w')
+    fy = open('test6_labels.txt', 'w')
 
     alphabet = list(string.uppercase)
-    for _ in xrange(200000):
-        a = np.random.random_integers(20,30)
+    for _ in xrange(20000):
+        a = np.random.random_integers(100,200)
         b = np.random.random_integers(5, 10)
-        seen = np.random.choice(alphabet, size=a)
+        seen = np.random.choice(alphabet, size=20)
+        seen = np.random.choice(seen, size=a)
         u = np.random.uniform()
         if  u < 0.4:
             query = np.random.choice(seen, size=b)

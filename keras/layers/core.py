@@ -1003,7 +1003,7 @@ class Dense(Layer):
 
         self.W = self.init((input_dim, self.output_dim),
                            name='{}_W'.format(self.name))
-        self.b = K.zeros((self.output_dim,),
+        self.b = K.ones((self.output_dim,),
                          name='{}_b'.format(self.name))
 
         self.trainable_weights = [self.W, self.b]
@@ -1120,7 +1120,7 @@ class TimeDistributedDense(MaskedLayer):
 
         self.W = self.init((input_dim, self.output_dim),
                            name='{}_W'.format(self.name))
-        self.b = K.zeros((self.output_dim,),
+        self.b = K.ones((self.output_dim,),
                          name='{}_b'.format(self.name))
 
         self.trainable_weights = [self.W, self.b]
